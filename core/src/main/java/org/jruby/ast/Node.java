@@ -57,6 +57,11 @@ public abstract class Node {
     // so that the two values of a end up being different.
     protected boolean containsVariableAssignment;
     protected boolean newline;
+    // For a statement (newline): the line its line event (tracing, coverage) is reported at, when it differs
+    // from line. MRI reports a statement at the line of the first thing it evaluates: the value of an
+    // assignment, the receiver of a call, the first element of a non-literal collection (see
+    // RubyParserBase#lineEventNode).
+    private int lineEventLine = -1;
 
     public Node(int line, boolean containsAssignment) {
         this.line = line;
@@ -70,6 +75,17 @@ public abstract class Node {
     // Used by heredoc dedent processing.  It gets unset so we do not liter line events because of it.
     public void unsetNewline() {
         this.newline = false;
+    }
+
+    public void setLineEventLine(int lineEventLine) {
+        this.lineEventLine = lineEventLine;
+    }
+
+    /**
+     * The line this statement's line event is reported at (see MRI's behavior for statements spanning lines).
+     */
+    public int getLineEventLine() {
+        return lineEventLine >= 0 ? lineEventLine : line;
     }
 
     public boolean isNewline() {

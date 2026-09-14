@@ -99,7 +99,8 @@ public abstract class IRBuilder<U, V, W, X, Y, Z> {
         Coverage,
         Backtrace
     }
-    LineInfo needsLineNumInfo = null;
+    LineInfo needsLineNumInfo = null;   // a line event to emit right before the next instruction...
+    int needsLineNum = -1;              // ...at this line
 
     // SSS FIXME: Currently only used for retries -- we should be able to eliminate this
     // Stack of nested rescue blocks -- this just tracks the start label of the blocks
@@ -371,20 +372,7 @@ public abstract class IRBuilder<U, V, W, X, Y, Z> {
     }
 
     public void addInstr(Instr instr) {
-        if (needsLineNumInfo != null) {
-            LineInfo type = needsLineNumInfo;
-            needsLineNumInfo = null;
-
-            if (type == LineInfo.Coverage) {
-                addInstr(new LineNumberInstr(lastProcessedLineNum, coverageMode));
-            } else {
-                addInstr(manager.newLineNumber(lastProcessedLineNum));
-            }
-
-            if (RubyInstanceConfig.FULL_TRACE_ENABLED) {
-                addInstr(new TraceInstr(RubyEvent.LINE, getCurrentModuleVariable(), methodNameFor(), getFileName(), lastProcessedLineNum + 1));
-            }
-        }
+        if (needsLineNumInfo != null) emitPendingLineNumber();
 
         // If we are building an ensure body, stash the instruction
         // in the ensure body's list. If not, add it to the scope directly.
@@ -2803,7 +2791,7 @@ public abstract class IRBuilder<U, V, W, X, Y, Z> {
         int[] flags = new int[] { 0 };
         Operand[] args = setupCallArgs(argsNode, flags);
 
-        determineIfWeNeedLineNumber(line, isNewline, false, false); // backtrace needs line of call in case of exception.
+        determineIfWeNeedLineNumberForCall(line, isNewline); // backtrace needs line of call in case of exception.
         if ((flags[0] & CALL_KEYWORD_REST) != 0) {  // {**k}, {**{}, **k}, etc...
             Variable test = addResultInstr(new RuntimeHelperCall(temp(), IS_HASH_EMPTY, new Operand[] { args[args.length - 1] }));
             if_else(test, tru(),
@@ -3154,7 +3142,7 @@ public abstract class IRBuilder<U, V, W, X, Y, Z> {
         // check for refinement calls before building any closure
         if (callType == FUNCTIONAL) determineIfMaybeRefined(name, args);
         Operand block = setupCallClosure(argsNode, iter);
-        determineIfWeNeedLineNumber(line, isNewline, false, false); // backtrace needs line of call in case of exception.
+        determineIfWeNeedLineNumberForCall(line, isNewline); // backtrace needs line of call in case of exception.
         if ((flags[0] & CALL_KEYWORD_REST) != 0) {  // {**k}, {**{}, **k}, etc...
             Variable test = addResultInstr(new RuntimeHelperCall(temp(), IS_HASH_EMPTY, new Operand[] { args[args.length - 1] }));
             if_else(test, tru(),
@@ -3172,16 +3160,63 @@ public abstract class IRBuilder<U, V, W, X, Y, Z> {
         return result;
     }
 
+    /**
+     * A call that is a statement of its own already had its line (and coverage) event emitted when the
+     * statement started; if building its receiver or arguments moved the current line elsewhere, restore the
+     * call's line for backtraces without counting the statement a second time.
+     */
+    protected void determineIfWeNeedLineNumberForCall(int line, boolean isNewline) {
+        if (line != lastProcessedLineNum) {
+            if (isNewline) requestLineNumber(LineInfo.Backtrace, line);
+
+            lastProcessedLineNum = line;
+        }
+    }
+
     protected void determineIfWeNeedLineNumber(int line, boolean isNewline, boolean implicitNil, boolean def) {
         if (line != lastProcessedLineNum && !implicitNil) {
-            LineInfo needsCoverage = isNewline ? LineInfo.Coverage : null;
             // DefNode will set it's own line number as part of impl but if it is for coverage we emit as instr also.
-            if (needsCoverage != null && (!def || coverageMode != 0)) { // Do not emit multiple line number instrs for the same line
-                needsLineNumInfo = needsCoverage;
+            if (isNewline && (!def || coverageMode != 0)) { // Do not emit multiple line number instrs for the same line
+                requestLineNumber(LineInfo.Coverage, line);
             }
 
             // This line is already process either by linenum or by instr which emits its own.
             lastProcessedLineNum = line;
+        }
+    }
+
+    /**
+     * Ask for a line event to be emitted right before the next instruction. A statement's event is reported
+     * at the line of the first instruction of the statement, as in MRI; when a statement starts on another
+     * line before the previous one produced any instruction, the previous statement's event is emitted at its
+     * own line anyway, and two statements sharing a line share one event.
+     */
+    private void requestLineNumber(LineInfo type, int line) {
+        if (needsLineNumInfo != null) {
+            if (needsLineNum != line) {
+                emitPendingLineNumber();
+            } else if (needsLineNumInfo == LineInfo.Coverage) {
+                return; // already asked for this line, and coverage is the stronger of the two
+            }
+        }
+
+        needsLineNumInfo = type;
+        needsLineNum = line;
+    }
+
+    private void emitPendingLineNumber() {
+        LineInfo type = needsLineNumInfo;
+        int line = needsLineNum;
+        needsLineNumInfo = null;
+
+        if (type == LineInfo.Coverage) {
+            addInstr(new LineNumberInstr(line, coverageMode));
+        } else {
+            addInstr(manager.newLineNumber(line));
+        }
+
+        if (RubyInstanceConfig.FULL_TRACE_ENABLED) {
+            addInstr(new TraceInstr(RubyEvent.LINE, getCurrentModuleVariable(), methodNameFor(), getFileName(), line + 1));
         }
     }
 

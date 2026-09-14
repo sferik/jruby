@@ -3708,7 +3708,7 @@ states[285] = (RubyParser p, Object yyVal, ProductionState[] yyVals, int yyTop, 
 states[286] = (RubyParser p, Object yyVal, ProductionState[] yyVals, int yyTop, int count, int yychar) -> {
                     /*%%%*/
                     p.value_expr(((Node)yyVals[-5+yyTop].value));
-                    yyVal = p.new_if(yyVals[yyTop - count + 1].start(), ((Node)yyVals[-5+yyTop].value), ((Node)yyVals[-3+yyTop].value), ((Node)yyVals[0+yyTop].value));
+                    yyVal = p.new_if(yyVals[yyTop - count + 1].start(), ((Node)yyVals[-5+yyTop].value), p.newline_node(((Node)yyVals[-3+yyTop].value), yyVals[yyTop - count + 3].start()), p.newline_node(((Node)yyVals[0+yyTop].value), yyVals[yyTop - count + 6].start()));
                     /*% %*/
                     /*% ripper: ifop!($1, $3, $6) %*/
   return yyVal;
@@ -4139,6 +4139,7 @@ states[359] = (RubyParser p, Object yyVal, ProductionState[] yyVals, int yyTop, 
                     } else {
                         yyVal = ((Node)yyVals[-1+yyTop].value);
                     }
+                    ((Node)yyVal).setLine(yyVals[yyTop - count + 1].start()); /* the literal starts at its bracket (where MRI reports it)*/
                     /*% %*/
                     /*% ripper: array!(escape_Qundef($2)) %*/
   return yyVal;
@@ -4147,6 +4148,7 @@ states[360] = (RubyParser p, Object yyVal, ProductionState[] yyVals, int yyTop, 
                     /*%%%*/
                     yyVal = ((HashNode)yyVals[-1+yyTop].value);
                     ((HashNode)yyVal).setIsLiteral();
+                    ((Node)yyVal).setLine(yyVals[yyTop - count + 1].start()); /* the literal starts at its brace (where MRI reports it)*/
                     /*% %*/
                     /*% ripper: hash!(escape_Qundef($2)) %*/
   return yyVal;
@@ -6844,7 +6846,7 @@ states[826] = (RubyParser p, Object yyVal, ProductionState[] yyVals, int yyTop, 
   return yyVal;
 };
 }
-					// line 4851 "parse.y"
+					// line 4853 "parse.y"
 
 }
-					// line 15176 "-"
+					// line 15178 "-"

@@ -11,7 +11,6 @@ exclude :test_coverage_optimized_branch, "no support for coverage options yet (#
 exclude :test_coverage_supported, "needs investigation"
 exclude :test_coverage_suspendable, "needs branching support"
 exclude :test_eval, "line number is not matching in eval"
-exclude :test_line_coverage_for_multiple_lines, "needs investigation"
 exclude :test_method_coverage, "no support for coverage options yet (#5147)"
 exclude :test_method_coverage_for_alias, "no support for coverage options yet (#5147)"
 exclude :test_method_coverage_for_define_method, "no support for coverage options yet (#5147)"

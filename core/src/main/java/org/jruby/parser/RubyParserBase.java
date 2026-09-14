@@ -481,13 +481,105 @@ public abstract class RubyParserBase {
     public Node newline_node(Node node, int line) {
         if (node == null) return null;
 
-        Node newNode = remove_begin(node);
-        // Conservative fix...try and use line unless we see remove has been removed then use the newNode.
-        if (newNode != node) line = newNode.getLine();
+        Node eventNode = lineEventNode(node);
+        if (eventNode != node) line = eventNode.getLine();
         coverLine(line);
         node.setNewline();
+        node.setLineEventLine(line);
 
         return node;
+    }
+
+    /**
+     * The node whose line MRI reports a statement's line event at: the line of the first instruction it
+     * compiles for the statement, which is the first thing the statement evaluates. An assignment evaluates its
+     * value first (or the scope of a scoped constant, or the receiver of an attribute), a call its receiver, a
+     * collection its first element unless it is a literal of literals (compiled as a whole), a begin/rescue its
+     * body, an interpolated string its first part.
+     */
+    private static Node lineEventNode(Node node) {
+        while (true) {
+            Node next = null;
+
+            if (node instanceof ConstDeclNode constDecl && constDecl.getConstNode() != null) {
+                next = constDecl.getConstNode();
+            } else if (node instanceof AssignableNode assignable) {
+                next = assignable.getValueNode();
+            } else if (node instanceof OpAsgnOrNode opAsgn) {
+                next = opAsgn.getFirstNode();
+            } else if (node instanceof OpAsgnAndNode opAsgn) {
+                next = opAsgn.getFirstNode();
+            } else if (node instanceof OpAsgnConstDeclNode opAsgn) {
+                next = opAsgn.getFirstNode();
+            } else if (node instanceof OpAsgnNode opAsgn) {
+                next = opAsgn.getReceiverNode();
+            } else if (node instanceof OpElementAsgnNode opAsgn) {
+                next = opAsgn.getReceiverNode();
+            } else if (node instanceof AttrAssignNode attrAssign) {
+                next = attrAssign.getReceiverNode();
+            } else if (node instanceof CallNode call) {
+                next = call.getReceiverNode();
+            } else if (node instanceof Match2Node match) {
+                next = match.getReceiverNode();
+            } else if (node instanceof Match3Node match) {
+                next = match.getReceiverNode();
+            } else if (node instanceof MatchNode match) {
+                next = match.getRegexpNode();
+            } else if (node instanceof AndNode and) {
+                next = and.getFirstNode();
+            } else if (node instanceof OrNode or) {
+                next = or.getFirstNode();
+            } else if (node instanceof DotNode dot) {
+                next = dot.getBeginNode();
+            } else if (node instanceof SplatNode splat) {
+                next = splat.getValue();
+            } else if (node instanceof ReturnNode ret) {
+                next = ret.getValueNode();
+            } else if (node instanceof Colon2Node colon2) {
+                next = colon2.getLeftNode();
+            } else if (node instanceof BeginNode begin) {
+                next = begin.getBodyNode();
+            } else if (node instanceof RescueNode rescue) {
+                next = rescue.getBodyNode();
+            } else if (node instanceof EvStrNode evStr) {
+                next = evStr.getBody();
+            } else if (node instanceof HashNode hash) {
+                if (!hash.getPairs().isEmpty() && !isLiteralHash(hash)) next = hash.getPairs().get(0).getKey();
+            } else if (node instanceof ArrayNode array) {
+                if (array.size() > 0 && !isLiteralArray(array)) next = array.get(0);
+            } else if (node instanceof DNode dnode) {
+                if (dnode.size() > 0) next = dnode.get(0);
+            }
+
+            if (next == null || next instanceof NilImplicitNode || next.getLine() < 0) return node;
+
+            node = next;
+        }
+    }
+
+    // A literal MRI compiles into a single instruction (duparray/duphash) when collected: numbers, symbols,
+    // nil/true/false and regexps; strings only as hash keys (they are frozen there).
+    private static boolean isLiteralValue(Node node) {
+        return node instanceof FixnumNode || node instanceof BignumNode || node instanceof FloatNode ||
+                node instanceof RationalNode || node instanceof ComplexNode || node instanceof SymbolNode ||
+                node instanceof NilNode || node instanceof TrueNode || node instanceof FalseNode ||
+                node instanceof RegexpNode;
+    }
+
+    private static boolean isLiteralArray(ArrayNode array) {
+        for (Node element : array.children()) {
+            if (!isLiteralValue(element)) return false;
+        }
+        return true;
+    }
+
+    private static boolean isLiteralHash(HashNode hash) {
+        for (KeyValuePair<Node, Node> pair : hash.getPairs()) {
+            Node key = pair.getKey();
+            if (key == null || !(isLiteralValue(key) || key.getClass() == StrNode.class)) return false;
+            if (!isLiteralValue(pair.getValue())) return false;
+        }
+        return true;
     }
 
     // This is the last node made in the AST unintuitively so so post-processing can occur here.

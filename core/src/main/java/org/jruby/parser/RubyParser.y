@@ -1937,7 +1937,7 @@ arg             : lhs '=' lex_ctxt arg_rhs {
                 | arg '?' arg opt_nl ':' arg {
                     /*%%%*/
                     p.value_expr($1);
-                    $$ = p.new_if(@1.start(), $1, $3, $6);
+                    $$ = p.new_if(@1.start(), $1, p.newline_node($3, @3.start()), p.newline_node($6, @6.start()));
                     /*% %*/
                     /*% ripper: ifop!($1, $3, $6) %*/
                 }
@@ -2343,6 +2343,7 @@ primary         : literal
                     } else {
                         $$ = $2;
                     }
+                    $<Node>$.setLine(@1.start()); // the literal starts at its bracket (where MRI reports it)
                     /*% %*/
                     /*% ripper: array!(escape_Qundef($2)) %*/
                 }
@@ -2350,6 +2351,7 @@ primary         : literal
                     /*%%%*/
                     $$ = $2;
                     $<HashNode>$.setIsLiteral();
+                    $<Node>$.setLine(@1.start()); // the literal starts at its brace (where MRI reports it)
                     /*% %*/
                     /*% ripper: hash!(escape_Qundef($2)) %*/
                 }
