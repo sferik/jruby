@@ -27,7 +27,10 @@
 package org.jruby.ext.coverage;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.jruby.util.collections.IntList;
 
@@ -39,15 +42,22 @@ import org.jruby.util.collections.IntList;
  * <li>{@link #getLines()}: execution count per line (-1 for lines that hold no code), present only while
  * lines are being measured;</li>
  * <li>{@link #getMethods()}: one {@link MethodCoverage} for every method entry defined from this file since
- * coverage was set up, in definition order.</li>
+ * coverage was set up, in definition order;</li>
+ * <li>{@link #getBranches()}: one {@link BranchCoverage} for every branching construct of the file, in the
+ * order the IR builder met them (which is the order MRI's compiler meets them and numbers them in).</li>
  * </ul>
  *
- * <p>Instances are only ever touched while holding the {@link CoverageData} lock (registration, clearing and
- * result conversion all synchronize on it), so the collections need no synchronization of their own.</p>
+ * <p>The method entries are only ever touched while holding the {@link CoverageData} lock (registration,
+ * clearing and result conversion all synchronize on it), so that list needs no synchronization of its own. The
+ * branches are declared by the IR builder and their targets looked up by running code without that lock, so
+ * declaration synchronizes on this instance and the lists are safe to read concurrently.</p>
  */
 public final class FileCoverage {
     private IntList lines;
     private final List<MethodCoverage> methods = new ArrayList<>();
+    private final List<BranchCoverage> branches = new CopyOnWriteArrayList<>();
+    private final Map<String, BranchCoverage> branchesByKey = new HashMap<>();
+    private final List<BranchTarget> branchTargets = new CopyOnWriteArrayList<>();
 
     public IntList getLines() {
         return lines;
@@ -59,5 +69,49 @@ public final class FileCoverage {
 
     public List<MethodCoverage> getMethods() {
         return methods;
+    }
+
+    /**
+     * Declare (or find) the branching construct of the given type at the given source span.
+     *
+     * @param type if, unless, case, while, until or &amp;.
+     * @param startLine one-based line where the construct starts
+     * @param startColumn zero-based byte column where it starts
+     * @param endLine one-based line where it ends
+     * @param endColumn zero-based byte column just past its end
+     */
+    public synchronized BranchCoverage declareBranch(String type, int startLine, int startColumn, int endLine, int endColumn) {
+        String key = type + ':' + startLine + ':' + startColumn + ':' + endLine + ':' + endColumn;
+        BranchCoverage branch = branchesByKey.get(key);
+
+        if (branch == null) {
+            branch = new BranchCoverage(this, type, startLine, startColumn, endLine, endColumn);
+            branchesByKey.put(key, branch);
+            branches.add(branch);
+        }
+
+        return branch;
+    }
+
+    /**
+     * The branching constructs in declaration order.
+     */
+    public List<BranchCoverage> getBranches() {
+        return branches;
+    }
+
+    /**
+     * The branch target with the given {@link BranchTarget#getIndex() index}, or null.
+     */
+    public BranchTarget getBranchTarget(int index) {
+        return index >= 0 && index < branchTargets.size() ? branchTargets.get(index) : null;
+    }
+
+    synchronized int registerBranchTarget() {
+        return branchTargets.size();
+    }
+
+    synchronized void addBranchTarget(BranchTarget target) {
+        branchTargets.add(target);
     }
 }

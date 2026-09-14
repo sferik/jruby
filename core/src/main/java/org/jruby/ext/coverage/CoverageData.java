@@ -110,6 +110,13 @@ public class CoverageData {
     }
 
     /**
+     * Are branches being counted (branches mode)?
+     */
+    public boolean isBranchesEnabled() {
+        return (mode & BRANCHES) != 0;
+    }
+
+    /**
      * The data collected so far, by file name; null when coverage is not set up.
      */
     public Map<String, FileCoverage> getCoverage() {
@@ -169,6 +176,12 @@ public class CoverageData {
 
                 for (MethodCoverage method : file.getMethods()) {
                     method.clear();
+                }
+
+                for (BranchCoverage branch : file.getBranches()) {
+                    for (BranchTarget target : branch.getTargets()) {
+                        target.clear();
+                    }
                 }
             }
         }
