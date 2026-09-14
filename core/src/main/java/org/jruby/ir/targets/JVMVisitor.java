@@ -2540,6 +2540,17 @@ public class JVMVisitor extends IRVisitor {
     }
 
     @Override
+    public void CoverBranchInstr(CoverBranchInstr instr) {
+        jvmMethod().loadContext();
+        jvmAdapter().invokedynamic(
+                "coverBranch",
+                sig(void.class, ThreadContext.class),
+                CoverageSite.COVER_BRANCH_BOOTSTRAP,
+                instr.getFile(),
+                instr.getIndex());
+    }
+
+    @Override
     public void CoverMethodInstr(CoverMethodInstr instr) {
         jvmMethod().loadContext();
         jvmMethod().loadStaticScope();
